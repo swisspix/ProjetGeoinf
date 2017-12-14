@@ -1,0 +1,182 @@
+<html>
+    <head>
+        <title>ol3 - EXA - Partie 2a - Geocoding</title>
+        <script type="text/javascript" src="js/config.js"></script>
+        <script type="text/javascript">
+            var map, vectorLayer;
+            var token = "pk.eyJ1Ijoib2VydHoiLCJhIjoiT29aUVYyRSJ9.mz-_gaaigdhurQPHZf7fig";
+            var searchResults;
+            //je définis quel est le style un, c'est une variable
+            var style1 = new ol.style.Style({
+                image: new ol.style.Icon({
+                    opacity: 0.75,
+                    src:'http://www.mediamaps.ch/oltuto/images/marker-circle.png'
+                })
+            });
+            //je définis ma variable pour le style 2
+            var style2 = new ol.style.Style({
+                image: new ol.style.Icon({
+                    opacity: 0.75,
+                    src: 'http://www.mediamaps.ch/oltuto/images/marker-cross.png'
+                })
+            });
+            //je féfinis ma variable pour quand la souris passe sur le style 1(que ça doit appliquer le style 2)
+            var hoverInteraction = new ol.interaction.Select({
+                condition: ol.events.condition.pointerMove,
+                style: style2
+            });
+            $(document).ready(function () {
+                // Create map with Mapbox outdoors baselayer (center near Yverdon-les-Bains)
+                map = new ol.Map({
+                    view: new ol.View({
+                        center: [766225, 5908730],
+                        zoom: 10
+                    }),
+                    target: 'map',
+                    layers: [
+                        new ol.layer.Tile({
+                            title: "Mapbox outdoors",
+                            source: new ol.source.XYZ({
+                                url: 'http://api.tiles.mapbox.com/v4/mapbox.outdoors/{z}/{x}/{y}.png?access_token=' + token
+                            })
+                        })
+                    ]
+                });
+
+                //je dis quelle fonction doit être appellé pour ma map lorsqu'y a l'interaction
+                map.addInteraction(hoverInteraction);
+
+                // Create and add the vector layer to host features
+                vectorLayer = new ol.layer.Vector({
+                    source: new ol.source.Vector(),
+                    //je lui applique mon style 1 de base
+                    style:style1
+                });
+                map.addLayer(vectorLayer);
+
+
+
+                // Set a callback on Enter keypress to run the mapbox.places request
+                $("#search").keypress(geocodeService);
+
+                // Set a callback on Combo change to center the map on the chosen option
+                //quand on valide la rechercher
+                $("#results").change(centerMap);
+            });
+
+            function geocodeService(e) {
+                if (e.which == 13) {
+                    console.log(e.currentTarget.value);
+                    // AJAX call MapBox geocoding service as soon as the user hits the Enter key
+                    // ...
+                    //on récupère la valeur tapée dans la barre de recherche
+                        var search =  $("#search").val();
+
+                        //on rajoute la valeur récupérée dans l'url pour compléter la recherche
+                        var url = "https://api.mapbox.com/geocoding/v5/mapbox.places/" + search + ".json?access_token="+ token;
+                        console.log(url);
+
+                        //requête ajax pour aller donner notre url et récupérer les infos
+                        $.ajax({
+                          url: url,
+                        }).done(function(data) {
+                            resultData(data);
+                        });
+                    }
+            }
+
+
+            //fonction qui permet de remplir la select-list
+            function resultData(data){
+                searchResults = data;
+                $("#results").empty();
+                //regarde le nombre de résultat reçu (data.features.length) et l'ajoute à la barre déroulante avec la fin du texte
+                $("#results").append($("<option>").text(data.features.length + " lieux trouves..."));
+
+                //passe par chaque élément du tableau
+                for (var i = 0; i<data.features.length - 1; i++) {
+                    //créer les différantes option avec les données reçues. 1. en ajoutant les noms
+                    var myData = $("<option>").text(data.features[i].place_name);
+                    //2. en ajoutant la valeur en data de la latitude (pour la récupérer après pour le centrage)
+                    myData.data('latitude',data.features[i].center[1]);
+                    //3. en ajoutant la valeur en data de la longitude (pour la récupérer après pour le centrage)
+                    myData.data('longitude',data.features[i].center[0]);
+                    $("#results").append(myData);
+
+
+                };
+                //passer la visibilité à active
+                $("#results").css("visibility", "visible");
+            }
+
+
+            function centerMap() {
+                //mettre dans la variable la valeur séléctionnée
+                var data = $("#results option:selected");
+                //récuprer la valeur longitude et latitude
+                var latitude = data.data("latitude");
+                var longitude = data.data("longitude");
+                console.log(latitude + " " + longitude);
+
+                //ajuster ma vue selon les longitude et latitude sauvegardée dans les variables
+                map.getView().setCenter(ol.proj.transform([longitude, latitude], "EPSG:4326", "EPSG:3857"));
+
+                //ajuster le zoom
+                map.getView().setZoom(12);
+
+                // as soon as the user has selected a result, let's empty the combo search results
+                $("#results").empty();
+                // also hide it
+                $("#results").css("visibility", "hidden");
+                // and reset its size to éake it completely hidden
+                $("#results").attr("size", 0);
+                // also empty the search text input
+                $("#search").val("");
+
+                //Rajoute un feature mais il faut transforme le point géométrique => passe à la bonne norme sinon ça ne va pas marcher
+                var feature = new ol.Feature({
+                    geometry: new ol.geom.Point(ol.proj.transform([longitude, latitude], "EPSG:4326", "EPSG:3857"))
+                });
+                vectorLayer.getSource().addFeature(feature);
+            }
+
+        </script>
+
+        <style type="text/css">
+            #map {
+                width: 100%;
+                height: 100%;
+            }
+
+            #search {
+                position: absolute;
+                top: 15px;
+                left: 60px;
+                background-color: none;
+                padding: 5px;
+                height: 30;
+            }
+
+            #results {
+                background-color: white;
+                border: 2px solid lightgrey;
+                visibility: hidden;
+                /* paste the combo just below the search input
+                 (it gives the illusion of being related to it, just like a datalist) */
+                position: absolute;
+                top: 43px;
+                left: 50px;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Map view anchor  -->
+        <div id="map"></div>
+
+        <!-- Input for the search text (SearchBox) -->
+        <input type="text" id="search">
+
+        <!-- Output for the search results (Combo) -->
+        <select id="results"></select>
+    </body>
+</html>
